@@ -287,6 +287,146 @@ document.addEventListener('mouseup', () => {
   }
 })
 
+/* ======== Left Panel — Folder ======== */
+const folderList = document.getElementById('folder-list')
+const folderPath = document.getElementById('folder-path')
+const openFolderBtn = document.getElementById('open-folder-btn')
+const newFileBtn = document.getElementById('new-file-btn')
+const newFolderBtn = document.getElementById('new-folder-btn')
+
+let currentFolder = null
+let folderHistory = []
+
+async function loadFolder(dirPath) {
+  currentFolder = dirPath
+  const result = await window.api.fs.listDir(dirPath)
+  if (!result) return
+  folderPath.textContent = result.path
+  folderList.innerHTML = ''
+  for (const entry of result.entries) {
+    const item = document.createElement('div')
+    item.className = 'folder-entry'
+    if (entry.isDirectory) {
+      item.innerHTML = `
+        <span class="folder-entry-icon">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+        </span>
+        <span class="folder-entry-name">${escapeHtml(entry.name)}</span>
+      `
+      const fullPath = pathJoin(result.path, entry.name)
+      item.addEventListener('click', () => {
+        folderHistory.push(result.path)
+        loadFolder(fullPath)
+      })
+      item.addEventListener('contextmenu', (e) => showContextMenu(e, fullPath))
+    } else {
+      const sizeStr = entry.size < 1024 ? `${entry.size}B` : `${(entry.size / 1024).toFixed(1)}KB`
+      item.innerHTML = `
+        <span class="folder-entry-icon">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+        </span>
+        <span class="folder-entry-name">${escapeHtml(entry.name)}</span>
+        <span class="folder-entry-size">${sizeStr}</span>
+      `
+      item.addEventListener('click', () => showFileInViewer(entry.name, result.path))
+    }
+    folderList.appendChild(item)
+  }
+  // Add back button if we have history
+  if (folderHistory.length > 0) {
+    const back = document.createElement('div')
+    back.className = 'folder-entry'
+    back.innerHTML = `
+      <span class="folder-entry-icon" style="opacity:0.4">↑</span>
+      <span class="folder-entry-name" style="color:var(--text-muted)">..</span>
+    `
+    back.addEventListener('click', () => {
+      const prev = folderHistory.pop()
+      if (prev) loadFolder(prev)
+    })
+    folderList.prepend(back)
+  }
+}
+
+async function showFileInViewer(name, dir) {
+  const filePath = pathJoin(dir, name)
+  const result = await window.api.fs.readFile(filePath)
+  if (!result || result.binary) {
+    viewerFilename.textContent = name
+    viewerContent.textContent = result ? '(binary file)' : 'Error: could not read file'
+  } else {
+    viewerFilename.textContent = name
+    viewerContent.textContent = result.content
+  }
+  memoryViewer.classList.remove('hidden')
+  document.querySelectorAll('.memory-item').forEach((el) => el.classList.remove('active'))
+}
+
+folderPath.addEventListener('contextmenu', (e) => {
+  if (currentFolder) showContextMenu(e, currentFolder)
+})
+
+openFolderBtn.addEventListener('click', async () => {
+  const dir = await window.api.fs.selectFolder()
+  if (dir) {
+    folderHistory = []
+    loadFolder(dir)
+  }
+})
+
+newFileBtn.addEventListener('click', async () => {
+  const name = prompt('File name:')
+  if (!name || !currentFolder) return
+  const ok = await window.api.fs.createFile(currentFolder, name)
+  if (ok) loadFolder(currentFolder)
+})
+
+newFolderBtn.addEventListener('click', async () => {
+  const name = prompt('Folder name:')
+  if (!name || !currentFolder) return
+  const ok = await window.api.fs.createFolder(currentFolder, name)
+  if (ok) loadFolder(currentFolder)
+})
+
+// Simple path join (no dep needed)
+function pathJoin(...parts) {
+  return parts.join('/').replace(/\\/g, '/').replace(/\/+/g, '/').replace(/\/$/, '') || '/'
+}
+
+/* ======== Context Menu ======== */
+const ctxMenu = document.getElementById('context-menu')
+const ctxOpenTerminal = ctxMenu.querySelector('[data-action="open-terminal"]')
+let ctxTargetPath = null
+
+function showContextMenu(e, targetPath) {
+  e.preventDefault()
+  ctxTargetPath = targetPath
+  ctxMenu.style.left = e.clientX + 'px'
+  ctxMenu.style.top = e.clientY + 'px'
+  ctxMenu.classList.remove('hidden')
+}
+
+function hideContextMenu() {
+  ctxMenu.classList.add('hidden')
+  ctxTargetPath = null
+}
+
+document.addEventListener('click', (e) => {
+  if (!ctxMenu.contains(e.target)) hideContextMenu()
+})
+
+ctxOpenTerminal.addEventListener('click', () => {
+  if (ctxTargetPath) {
+    createTerminal({ name: 'CMD', cwd: ctxTargetPath })
+  }
+  hideContextMenu()
+})
+
 // Watch for changes
 let memCleanup = null
 
@@ -305,6 +445,8 @@ async function init() {
 
   const root = await window.api.fs.getProjectRoot()
   updateCurrentDir()
+
+  await loadFolder(root)
 
   await createTerminal({ name: 'CMD', cwd: root })
 }

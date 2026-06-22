@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld('api', {
     listDir: (dirPath) => ipcRenderer.invoke('fs:listDir', dirPath),
     readFile: (filePath) => ipcRenderer.invoke('fs:readFile', filePath),
     getProjectRoot: () => ipcRenderer.invoke('fs:getProjectRoot'),
+    selectFolder: () => ipcRenderer.invoke('fs:selectFolder'),
+    createFile: (dir, name) => ipcRenderer.invoke('fs:createFile', dir, name),
+    createFolder: (dir, name) => ipcRenderer.invoke('fs:createFolder', dir, name),
   },
   memory: {
     list: () => ipcRenderer.invoke('memory:list'),

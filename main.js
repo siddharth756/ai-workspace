@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const pty = require('node-pty')
@@ -163,6 +163,31 @@ ipcMain.handle('fs:readFile', async (_e, filePath) => {
 
 ipcMain.handle('fs:getProjectRoot', async () => {
   return __dirname
+})
+
+ipcMain.handle('fs:selectFolder', async () => {
+  const win = BrowserWindow.getAllWindows()[0]
+  const result = await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
+  if (result.canceled || result.filePaths.length === 0) return null
+  return result.filePaths[0]
+})
+
+ipcMain.handle('fs:createFile', async (_e, dir, name) => {
+  try {
+    const fp = path.join(dir, name)
+    if (fs.existsSync(fp)) return false
+    fs.writeFileSync(fp, '', 'utf-8')
+    return true
+  } catch { return false }
+})
+
+ipcMain.handle('fs:createFolder', async (_e, dir, name) => {
+  try {
+    const fp = path.join(dir, name)
+    if (fs.existsSync(fp)) return false
+    fs.mkdirSync(fp, { recursive: true })
+    return true
+  } catch { return false }
 })
 
 ipcMain.handle('memory:list', async () => {
